@@ -2,7 +2,7 @@
 set -ux
 
 SAVE_DIR=outputs/DailyDialog
-VOCAB_PATH=model/Bert/vocab.txt
+VOCAB_PATH=data/vocab.txt
 DATA_DIR=data/DailyDialog
 INIT_CHECKPOINT=model/PLATO
 DATA_TYPE=multi
@@ -16,11 +16,13 @@ export FLAGS_fraction_of_gpu_memory_to_use=0.1
 export FLAGS_eager_delete_scope=True
 export FLAGS_eager_delete_tensor_gb=0.0
 
-python -u \
-    ./preprocess.py \
-    --vocab_path $VOCAB_PATH \
-    --data_dir $DATA_DIR \
-    --data_type $DATA_TYPE
+if [[ ! -e $DATA_DIR/dial.train.jsonl ]]; then
+    python -u \
+        ./preprocess.py \
+        --vocab_path $VOCAB_PATH \
+        --data_dir $DATA_DIR \
+        --data_type $DATA_TYPE
+fi
 
 if [[ "$USE_VISUALDL" = true ]]; then
     visualdl --logdir=$SAVE_DIR/summary --port=8083 --host=`hostname` &
@@ -33,7 +35,7 @@ python -u \
     --vocab_path $VOCAB_PATH \
     --data_dir $DATA_DIR \
     --data_type $DATA_TYPE \
-    --batch_size 6 \
+    --batch_size 12 \
     --valid_steps 2000 \
     --num_type_embeddings 2 \
     --use_discriminator true \

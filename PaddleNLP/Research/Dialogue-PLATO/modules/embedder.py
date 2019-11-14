@@ -16,11 +16,11 @@ Embedder class.
 """
 
 import paddle.fluid as fluid
-from paddle.fluid.dygraph import Embedding
-from paddle.fluid.dygraph import Layer
 import paddle.fluid.layers as layers
 
-import plato.modules.functions as F
+import modules.functions as F
+from paddle.fluid.dygraph import Embedding
+from paddle.fluid.dygraph import Layer
 
 
 class Embedder(Layer):

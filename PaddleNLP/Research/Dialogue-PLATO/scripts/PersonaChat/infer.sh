@@ -2,7 +2,7 @@
 set -ux
 
 SAVE_DIR=outputs/PersonaChat.infer
-VOCAB_PATH=model/Bert/vocab.txt
+VOCAB_PATH=data/vocab.txt
 DATA_DIR=data/PersonaChat
 INIT_CHECKPOINT=outputs/PersonaChat/best.model
 DATA_TYPE=multi_knowledge
@@ -15,11 +15,13 @@ export FLAGS_fraction_of_gpu_memory_to_use=0.1
 export FLAGS_eager_delete_scope=True
 export FLAGS_eager_delete_tensor_gb=0.0
 
-python -u \
-    ./preprocess.py \
-    --vocab_path $VOCAB_PATH \
-    --data_dir $DATA_DIR \
-    --data_type $DATA_TYPE
+if [[ ! -e $DATA_DIR/dial.test.jsonl ]]; then
+    python -u \
+        ./preprocess.py \
+        --vocab_path $VOCAB_PATH \
+        --data_dir $DATA_DIR \
+        --data_type $DATA_TYPE
+fi
 
 python -u \
     ./run.py \

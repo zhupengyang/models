@@ -20,11 +20,9 @@ import math
 import paddle.fluid as fluid
 import paddle.batch
 
-from plato.args import str2bool
-from plato.data.sampler import RandomSampler
-from plato.data.sampler import SequentialSampler
-from plato.data.sampler import SortedSampler
-import plato.modules.parallel as parallel
+from args import str2bool
+from sampler import RandomSampler
+from sampler import SequentialSampler
 
 
 class DataLoader(object):
@@ -33,22 +31,17 @@ class DataLoader(object):
     @classmethod
     def add_cmdline_argument(cls, group):
         group.add_argument("--shuffle", type=str2bool, default=True)
-        group.add_argument("--sort_pool_size", type=int, default=0)
         return group
 
-    def __init__(self, dataset, hparams, collate_fn=None, sampler=None, is_test=False, is_train=False):
+    def __init__(self, dataset, hparams, collate_fn=None, sampler=None, is_test=False):
         self.dataset = dataset
         self.collate_fn = collate_fn
-        self.sort_pool_size = hparams.sort_pool_size
 
         if sampler is None:
             if hparams.shuffle and not is_test:
                 sampler = RandomSampler(dataset)
             else:
                 sampler = SequentialSampler(dataset)
-
-        if self.sort_pool_size > 0 and not is_test:
-            sampler = SortedSampler(sampler, self.sort_pool_size)
 
         def reader():
             for idx in sampler:
@@ -57,7 +50,7 @@ class DataLoader(object):
         self.reader = paddle.batch(reader, batch_size=hparams.batch_size, drop_last=False)
         self.num_batches = math.ceil(len(dataset) / hparams.batch_size)
 
-        if hparams.use_data_distributed and parallel.Env().nranks > 1 and is_train:
+        if hparams.use_data_distributed:
             self.reader = fluid.contrib.reader.distributed_batch_reader(self.reader)
             self.num_batches = self.num_batches // fluid.dygraph.parallel.Env().nranks
 

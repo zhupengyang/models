@@ -2,7 +2,7 @@
 set -ux
 
 SAVE_DIR=outputs/PersonaChat
-VOCAB_PATH=model/Bert/vocab.txt
+VOCAB_PATH=data/vocab.txt
 DATA_DIR=data/PersonaChat
 INIT_CHECKPOINT=model/PLATO
 DATA_TYPE=multi_knowledge
@@ -33,7 +33,7 @@ python -u \
     --vocab_path $VOCAB_PATH \
     --data_dir $DATA_DIR \
     --data_type $DATA_TYPE \
-    --batch_size 4 \
+    --batch_size 12 \
     --valid_steps 2000 \
     --num_type_embeddings 3 \
     --use_discriminator true \

@@ -16,7 +16,6 @@ MetricsTracker class
 """
 
 from collections import defaultdict
-import math
 
 
 class MetricsTracker(object):
@@ -67,9 +66,6 @@ class MetricsTracker(object):
         for key, val in self.metrics_val.items():
             metric_str = f"{key.upper()}-{val:.3f}"
             metric_strs.append(metric_str)
-        if "token_nll" in self.metrics_val:
-            metric_str = f"TOKEN_PPL-{math.exp(self.metrics_val['token_nll']):.3f}"
-            metric_strs.append(metric_str)
         metric_strs = "   ".join(metric_strs)
         return metric_strs
 
@@ -77,9 +73,6 @@ class MetricsTracker(object):
         metric_strs = []
         for key, val in self.metrics_avg.items():
             metric_str = f"{key.upper()}-{val:.3f}"
-            metric_strs.append(metric_str)
-        if "token_nll" in self.metrics_avg:
-            metric_str = f"TOKEN_PPL-{math.exp(self.metrics_avg['token_nll']):.3f}"
             metric_strs.append(metric_str)
         metric_strs = "   ".join(metric_strs)
         return metric_strs

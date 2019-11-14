@@ -56,7 +56,7 @@ class HParams(dict):
             params_dict = json.load(fp)
         for k, v in params_dict.items():
             if isinstance(v, dict):
-                self[k].update(HParams(v))
+                self[k] = HParams(v)
             else:
                 self[k] = v
 

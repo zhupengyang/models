@@ -22,17 +22,16 @@ import sys
 import time
 
 import numpy as np
-import paddle
 import paddle.fluid as fluid
 import paddle.fluid.dygraph as dygraph
 from tqdm import tqdm
 
-from plato.args import str2bool
-from plato.data.data_loader import DataLoader
-from plato.metrics.metrics_tracker import MetricsTracker
-from plato.metrics.metrics import bleu
-from plato.metrics.metrics import distinct
-import plato.modules.parallel as parallel
+from args import str2bool
+from dataloader import DataLoader
+from metrics.metrics_tracker import MetricsTracker
+from metrics.metrics import bleu
+from metrics.metrics import distinct
+import modules.parallel as parallel
 
 
 def get_logger(log_path, name="default"):
@@ -55,10 +54,7 @@ def get_logger(log_path, name="default"):
 
 def evaluate_generation_result(results):
     tgt = [result["tgt"].split(" ") for result in results]
-    pred = [result["preds"][np.argmax(result["scores"])]
-            if isinstance(result["preds"], list)
-            else result["preds"]
-            for result in results]
+    pred = [result["preds"][np.argmax(result["scores"])] for result in results]
     pred = [p.split(" ") for p in pred]
     metrics = {}
     metrics_tracker = MetricsTracker()
@@ -82,12 +78,7 @@ def evaluate_generation_result(results):
 def save(model, model_path):
     if isinstance(model, parallel.DataParallel):
         model = model._layers
-    if hasattr(fluid, "save_dygraph"):
-        # >= 1.6.0 compatible
-        fluid.save_dygraph(model.state_dict(), model_path)
-        fluid.save_dygraph(model.optimizer.state_dict(), model_path)
-    else:
-        dygraph.save_persistables(model.state_dict(), model_path, optimizers=model.optimizer)
+    dygraph.save_persistables(model.state_dict(), model_path, optimizers=model.optimizer)
     return
 
 
@@ -124,11 +115,10 @@ class Trainer(object):
         # Use data distributed
         if hparams.use_data_distributed:
             strategy = parallel.prepare_context()
-            if strategy is not None:
-                parallel_model = parallel.DataParallel(model, strategy)
-                model.before_backward_fn = parallel_model.scale_loss
-                model.after_backward_fn = parallel_model.apply_collective_grads
-                model = parallel_model
+            parallel_model = parallel.DataParallel(model, strategy)
+            model.before_backward_fn = parallel_model.scale_loss
+            model.after_backward_fn = parallel_model.apply_collective_grads
+            model = parallel_model
 
         self.model = model
         self.to_tensor = to_tensor
@@ -153,8 +143,7 @@ class Trainer(object):
             self.train_summary = {}
             self.valid_summary = {}
 
-        self.batch_metrics_tracker = MetricsTracker()
-        self.token_metrics_tracker = MetricsTracker()
+        self.metrics_tracker = MetricsTracker()
 
         self.best_valid_metric = float("inf" if self.is_decreased_valid_metric else "-inf")
         self.epoch = 0
@@ -178,44 +167,33 @@ class Trainer(object):
         """
         self.epoch += 1
         num_batches = len(train_iter)
-        self.batch_metrics_tracker.clear()
-        self.token_metrics_tracker.clear()
+        self.metrics_tracker.clear()
         times = []
         for batch_id, (batch, batch_size) in enumerate(train_iter, 1):
             batch = type(batch)(map(lambda kv: (kv[0], self.to_tensor(kv[1])), batch.items()))
             batch["epoch"] = self.epoch
             batch["num_steps"] = self.batch_num
+            # measure data loading time
 
             # Do a training iteration
             start_time = time.time()
             metrics = self.model(batch, is_training=True)
-            token_num = metrics.pop("token_num", None)
             elapsed = time.time() - start_time
             times.append(elapsed)
 
-            batch_metrics = {k: v for k, v in metrics.items() if "token" not in k}
-            token_metrics = {k: v for k, v in metrics.items() if "token" in k}
-            self.batch_metrics_tracker.update(batch_metrics, batch_size)
-            self.token_metrics_tracker.update(token_metrics, token_num)
+            self.metrics_tracker.update(metrics, batch_size)
             self.batch_num += 1
 
             if self.log_steps and batch_id % self.log_steps == 0:
-                batch_metrics_message = self.batch_metrics_tracker.value()
-                token_metrics_message = self.token_metrics_tracker.value()
+                metrics_message = self.metrics_tracker.value()
                 message_prefix = f"[Train][{self.epoch}][{batch_id}/{num_batches}]"
                 avg_time = f"AVG_Time-{sum(times[-self.log_steps:]) / self.log_steps:.3f}"
-                message = "   ".join([message_prefix, batch_metrics_message, token_metrics_message,
-                                      avg_time])
+                message = "   ".join([message_prefix, metrics_message, avg_time])
                 self.logger.info(message)
 
             if self.save_summary:
                 with self.summary_logger.mode("train"):
-                    for k, v in self.batch_metrics_tracker.items():
-                        if k not in self.train_summary:
-                            self.train_summary[k] = self.summary_logger.scalar(k)
-                        scalar = self.train_summary[k]
-                        scalar.add_record(self.batch_num, v)
-                    for k, v in self.token_metrics_tracker.items():
+                    for k, v in self.metrics_tracker.items():
                         if k not in self.train_summary:
                             self.train_summary[k] = self.summary_logger.scalar(k)
                         scalar = self.train_summary[k]
@@ -248,11 +226,9 @@ class Trainer(object):
         """
         self.logger.info("Generation starts ...")
         infer_save_file = os.path.join(self.save_dir, f"infer_{self.epoch}.result.json")
-
         # Inference
         infer_results = []
         batch_cnt = 0
-        begin_time = time.time()
         for batch, batch_size in tqdm(data_iter, total=num_batches):
             batch = type(batch)(map(lambda kv: (kv[0], self.to_tensor(kv[1])), batch.items()))
 
@@ -288,8 +264,7 @@ class Trainer(object):
         infer_metrics_tracker = evaluate_generation_result(infer_results)
         metrics_message = infer_metrics_tracker.summary()
         message_prefix = f"[Infer][{self.epoch}]"
-        time_cost = f"TIME-{time.time() - begin_time:.3f}"
-        message = "   ".join([message_prefix, metrics_message, time_cost])
+        message = "   ".join([message_prefix, metrics_message])
         self.logger.info(message)
         return
 
@@ -307,56 +282,42 @@ class Trainer(object):
             need_save = need_save and parallel.Env().local_rank == 0
 
         # Evaluation
-        begin_time = time.time()
-        batch_metrics_tracker = MetricsTracker()
-        token_metrics_tracker = MetricsTracker()
+        metrics_tracker = MetricsTracker()
         for batch, batch_size in data_iter:
             batch = type(batch)(map(lambda kv: (kv[0], self.to_tensor(kv[1])), batch.items()))
             metrics = self.model(batch, is_training=False)
-            token_num = int(metrics.pop("token_num"))
-            batch_metrics = {k: v for k, v in metrics.items() if "token" not in k}
-            token_metrics = {k: v for k, v in metrics.items() if "token" in k}
-            batch_metrics_tracker.update(batch_metrics, batch_size)
-            token_metrics_tracker.update(token_metrics, token_num)
-        batch_metrics_message = batch_metrics_tracker.summary()
-        token_metrics_message = token_metrics_tracker.summary()
+            metrics_tracker.update(metrics, batch_size)
+        metrics_message = metrics_tracker.summary()
         message_prefix = f"[Valid][{self.epoch}]"
-        time_cost = f"TIME-{time.time() - begin_time:.3f}"
-        message = "   ".join([message_prefix, batch_metrics_message, token_metrics_message, time_cost])
+        message = "   ".join([message_prefix, metrics_message])
         self.logger.info(message)
 
-        if need_save:
-            # Check valid metric
-            cur_valid_metric = batch_metrics_tracker.get(self.valid_metric_name)
-            if self.is_decreased_valid_metric:
-                is_best = cur_valid_metric < self.best_valid_metric
-            else:
-                is_best = cur_valid_metric > self.best_valid_metric
-            if is_best:
-                # Save current best model
-                self.best_valid_metric = cur_valid_metric
-                best_model_path = os.path.join(self.save_dir, "best.model")
-                save(self.model, best_model_path)
-                self.logger.info(
-                    f"Saved best model to '{best_model_path}' with new best valid metric "
-                    f"{self.valid_metric_name.upper()}-{self.best_valid_metric:.3f}")
+        # Check valid metric
+        cur_valid_metric = metrics_tracker.get(self.valid_metric_name)
+        if self.is_decreased_valid_metric:
+            is_best = cur_valid_metric < self.best_valid_metric
+        else:
+            is_best = cur_valid_metric > self.best_valid_metric
+        if is_best and need_save:
+            # Save current best model
+            self.best_valid_metric = cur_valid_metric
+            best_model_path = os.path.join(self.save_dir, "best.model")
+            save(self.model, best_model_path)
+            self.logger.info(
+                f"Saved best model to '{best_model_path}' with new best valid metric "
+                f"{self.valid_metric_name.upper()}-{self.best_valid_metric:.3f}")
+        
+        # Save checkpoint
+        if self.save_checkpoint and need_save:
+            model_file = os.path.join(self.save_dir, f"epoch_{self.epoch}.model")
+            save(self.model, model_file)
 
-            # Save checkpoint
-            if self.save_checkpoint:
-                model_file = os.path.join(self.save_dir, f"epoch_{self.epoch}.model")
-                save(self.model, model_file)
-
-            if self.save_summary:
-                with self.summary_logger.mode("valid"):
-                    for k, v in self.batch_metrics_tracker.items():
-                        if k not in self.valid_summary:
-                            self.valid_summary[k] = self.summary_logger.scalar(k)
-                        scalar = self.valid_summary[k]
-                        scalar.add_record(self.batch_num, v)
-                    for k, v in self.token_metrics_tracker.items():
-                        if k not in self.valid_summary:
-                            self.valid_summary[k] = self.summary_logger.scalar(k)
-                        scalar = self.valid_summary[k]
-                        scalar.add_record(self.batch_num, v)
+        if self.save_summary and need_save:
+            with self.summary_logger.mode("valid"):
+                for k, v in self.metrics_tracker.items():
+                    if k not in self.valid_summary:
+                        self.valid_summary[k] = self.summary_logger.scalar(k)
+                    scalar = self.valid_summary[k]
+                    scalar.add_record(self.batch_num, v)
 
         return
