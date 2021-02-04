@@ -395,8 +395,7 @@ class NewsComenzh(TranslationDataset):
             transform_func = NewsComenzh.get_default_transform_func(root=root)
             train_dataset = NewsComenzh.get_datasets(mode="train", transform_func=transform_func)
     """
-    # URL = "https://paddlenlp.bj.bcebos.com/datasets/newscom14.en-zh.tar.gz"
-    URL = "http://10.9.189.5:8088/newscom14.en-zh.tar.gz"
+    URL = "https://paddlenlp.bj.bcebos.com/datasets/WMT/newscom14.en-zh.tar.gz"
     SPLITS = {
         'train': TranslationDataset.META_INFO(
             os.path.join("newscom14.en-zh", "newscom14_enzh_data_bpe",
