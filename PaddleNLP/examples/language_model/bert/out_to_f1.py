@@ -119,53 +119,32 @@ def parse_args():
 def evaluate(model, metric, data_loader, label_num):
     model.eval()
     metric.reset()
-    # input0 = []
-    labels_all = []
-    outs = []
+
+    outs = np.loadtxt("./out.txt", str, delimiter="\n")
+    outs_tensor = []
+    for i in range(outs.size):
+        out = outs[i].tolist()
+        out_shape = out.split(":")[0].split(" ")
+        out_shape = tuple([int(i) for i in out_shape])
+        out_data = out.split(":")[1].split(" ")
+        out_data = np.array(out_data, np.float32)
+        out = out_data.reshape(out_shape)
+        outs_tensor.append(paddle.to_tensor(out))
+
+    i = 0
     for batch in data_loader:
         input_ids, segment_ids, length, labels = batch
-        # print(labels)
-        # exit()
-        # input_ids = input_ids.numpy()
-        # print(input_ids.shape)
 
-        # shape = np.array(input_ids.shape, str).flatten().tolist()
-        # shape = " ".join(shape)
-        # input_ids = input_ids.flatten().astype(str).tolist()
-        # input_ids = " ".join(input_ids)
-        # input0.append(shape + ":" + input_ids)
-        logits = model(input_ids, segment_ids)
-
-        out = logits.numpy()
-        out_shape = " ".join(np.array(out.shape, str).flatten().tolist())
-        out_data = " ".join(out.astype(str).flatten().tolist())
-        out = out_shape + ":" + out_data
-        outs.append(out)
-        print(out_shape)
-
-        label = labels.numpy()
-        label_shape = " ".join(np.array(label.shape, str).flatten().tolist())
-        label_data = " ".join(label.astype(str).flatten().tolist())
-        label = label_shape + ":" + label_data
-        labels_all.append(label)
-
+        # logits = model(input_ids, segment_ids)
+        logits = outs_tensor[i]
         preds = logits.argmax(axis=2)
         num_infer_chunks, num_label_chunks, num_correct_chunks = metric.compute(
             None, length, preds, labels)
         metric.update(num_infer_chunks.numpy(),
                       num_label_chunks.numpy(), num_correct_chunks.numpy())
         precision, recall, f1_score = metric.accumulate()
+        i += 1
     print("precision: %f, recall: %f, f1: %f" % (precision, recall, f1_score))
-    # input0 = np.array(input0, "str")
-    # print(input0.shape)
-    # print(input0)
-    # np.savetxt("./input0.txt", input0, "%s")
-    labels_all = np.array(labels_all, "str")
-    np.savetxt("./labels.txt", labels_all, "%s")
-    outs = np.array(outs, "str")
-    np.savetxt("./out.txt", outs, "%s")
-    print("done")
-
     model.train()
 
 
