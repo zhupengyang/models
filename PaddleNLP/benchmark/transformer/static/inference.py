@@ -13,6 +13,7 @@ import sacrebleu
 import paddle
 from paddle import inference
 
+sys.path.append('../../../')
 from paddlenlp.datasets import WMT14ende, NewsComenzh
 
 sys.path.append("../")
@@ -96,9 +97,19 @@ class Predictor(object):
 
     def predict(self, test_loader):
         outputs = []
+        # i = 0
+        # in_data = []
         for data in test_loader:
+            # shape = ' '.join(np.array(data[0].shape).astype(str).flatten().tolist())
+            # data = ' '.join(data[0].numpy().flatten().astype(str).tolist())
+            # in_data.append(shape + ':' + data)
             output = self.predict_batch(data)
             outputs.append(output)
+        #     i += 1
+        #     print(i)
+        # in_data = np.array(in_data, str)
+        # np.savetxt('./input.txt', in_data, '%s')
+        # exit()
         return outputs
 
 
@@ -119,13 +130,19 @@ def do_inference(args):
     # Define data loader
     test_loader, to_tokens = reader.create_infer_loader(args)
 
-    predictor = Predictor.create_predictor(args)
-    sequence_outputs = predictor.predict(test_loader)
+    # predictor = Predictor.create_predictor(args)
+    # sequence_outputs = predictor.predict(test_loader)
+    outs = np.loadtxt(args.output_file, str, delimiter='\n').tolist()
+    sequence_outputs = []
+    for out in outs:
+        shape, data = out.split(':')
+        shape = np.array(shape.split(' '), 'int64')
+        data = np.array(data.split(' '), 'int64').reshape(shape)
+        sequence_outputs.append([data])
 
     index = 0
     src_list = []
     ref_list = []
-    f = open(args.output_file, "w")
     for finished_sequence in sequence_outputs:
         finished_sequence = finished_sequence[0].transpose([0, 2, 1])
         for ins in finished_sequence:
@@ -146,7 +163,6 @@ def do_inference(args):
                     src_list.append(sequence)
                     ref_list.append(test_eval_data[index][1])
 
-                f.write(sequence + "\n")
             index += 1
     bleu = sacrebleu.corpus_bleu(src_list, [ref_list])
     logging.info("==========")

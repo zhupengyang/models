@@ -15,7 +15,7 @@ inference_model_dir: "infer_model"
 # Set seed for CE or debug
 random_seed: None
 # The file to output the translation results of predict_file to.
-output_file: "predict.txt"
+output_file: "out_xpu.txt"
 # The <bos>, <eos> and <unk> tokens in the dictionary.
 special_token: ["<s>", "<e>", "<unk>"]
 # The directory to store data.
@@ -30,9 +30,9 @@ pool_size: 200000
 sort_type: "global"
 batch_size: 4096
 infer_batch_size: 16
-shuffle_batch: True
+shuffle_batch: False
 # Data shuffle only works when sort_type is pool or none
-shuffle: True
+shuffle: False
 # shuffle_seed must be set when shuffle is True and using multi-cards to train. 
 # Otherwise, the number of batches cannot be guaranteed. 
 shuffle_seed: 128
